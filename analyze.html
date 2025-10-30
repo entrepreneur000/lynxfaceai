@@ -1,0 +1,662 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Analyze - LynxFace</title>
+  <link rel="icon" type="image/png" href="favicon.png">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Added Inter font for modern typography -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.11.0/dist/tf.min.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/face-landmarks-detection@1.0.2/dist/face-landmarks-detection.min.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <style>
+    .credit-modal-overlay {
+      position: fixed;
+      inset: 0;
+      background-color: rgba(0, 0, 0, 0.5);
+      backdrop-filter: blur(4px);
+      z-index: 9999;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 1rem;
+      animation: fadeIn 0.2s ease-out;
+    }
+
+    .credit-modal {
+      background: white;
+      border-radius: 1rem;
+      box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+      max-width: 28rem;
+      width: 100%;
+      overflow: hidden;
+      animation: slideUp 0.3s ease-out;
+    }
+
+    .credit-modal-header {
+      background: linear-gradient(135deg, #0891b2 0%, #4f46e5 100%);
+      padding: 1.5rem;
+      text-align: center;
+    }
+
+    .credit-modal-icon {
+      width: 4rem;
+      height: 4rem;
+      background: white;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin: 0 auto 1rem;
+      box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+    }
+
+    .credit-modal-body {
+      padding: 2rem;
+      text-align: center;
+    }
+
+    .credit-modal-footer {
+      padding: 1.5rem;
+      background: #f9fafb;
+      display: flex;
+      gap: 0.75rem;
+    }
+
+    .credit-modal-btn {
+      flex: 1;
+      padding: 0.75rem 1.5rem;
+      border-radius: 0.5rem;
+      font-weight: 600;
+      font-size: 0.875rem;
+      transition: all 0.2s;
+      cursor: pointer;
+      border: none;
+      outline: none;
+    }
+
+    .credit-modal-btn-primary {
+      background: linear-gradient(135deg, #0891b2 0%, #4f46e5 100%);
+      color: white;
+      box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+    }
+
+    .credit-modal-btn-primary:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+    }
+
+    .credit-modal-btn-secondary {
+      background: white;
+      color: #374151;
+      border: 2px solid #e5e7eb;
+    }
+
+    .credit-modal-btn-secondary:hover {
+      background: #f9fafb;
+      border-color: #d1d5db;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; }
+      to { opacity: 1; }
+    }
+
+    @keyframes slideUp {
+      from {
+        opacity: 0;
+        transform: translateY(1rem);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    [data-theme="dark"] .credit-modal {
+      background: #1f2937;
+    }
+
+    [data-theme="dark"] .credit-modal-footer {
+      background: #111827;
+    }
+
+    [data-theme="dark"] .credit-modal-btn-secondary {
+      background: #374151;
+      color: #f9fafb;
+      border-color: #4b5563;
+    }
+
+    [data-theme="dark"] .credit-modal-btn-secondary:hover {
+      background: #4b5563;
+      border-color: #6b7280;
+    }
+  </style>
+</head>
+<body>
+  <div class="top-progress-bar" id="top-progress"></div>
+  
+  <div id="credit-modal" class="credit-modal-overlay hidden">
+    <div class="credit-modal">
+      <div class="credit-modal-header">
+        <div class="credit-modal-icon">
+          <svg class="w-8 h-8 text-cyan-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+          </svg>
+        </div>
+        <h3 class="text-xl font-bold text-white" id="modal-title">No Credits Remaining</h3>
+      </div>
+      <div class="credit-modal-body">
+        <p class="text-gray-600 text-sm leading-relaxed" id="modal-message">
+          You have no credits remaining. Upgrade to Premium for unlimited analyses!
+        </p>
+      </div>
+      <div class="credit-modal-footer">
+        <button id="modal-cancel" class="credit-modal-btn credit-modal-btn-secondary">
+          Cancel
+        </button>
+        <button id="modal-confirm" class="credit-modal-btn credit-modal-btn-primary">
+          Upgrade Now
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <nav class="navbar">
+    <div class="nav-container">
+      <div class="nav-left">
+        <a href="index.html" style="display: flex; align-items: center; text-decoration: none; color: inherit;">
+          <img src="favicon.png" alt="LynxFace Logo" class="nav-logo">
+          <span class="nav-brand">LynxFace</span>
+        </a>
+      </div>
+      <button class="mobile-menu-toggle" aria-label="Toggle menu">
+        <span></span>
+        <span></span>
+        <span></span>
+      </button>
+      <ul class="nav-menu">
+        <li><a href="index.html">Home</a></li>
+        <li><a href="analyze.html" class="active">Analyze</a></li>
+        <li><a href="pricing.html">Pricing</a></li>
+        <li><a href="privacy.html">Privacy</a></li>
+        <li><a href="contact.html">Contact</a></li>
+        <div class="mobile-auth-buttons">
+        </div>
+        <div class="mobile-dark-mode-toggle">
+          <button id="mobileDarkModeToggle" class="dark-mode-toggle" aria-label="Toggle dark mode">
+            <svg class="sun-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="5"></circle>
+              <line x1="12" y1="1" x2="12" y2="3"></line>
+              <line x1="12" y1="21" x2="12" y2="23"></line>
+              <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+              <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+              <line x1="1" y1="12" x2="3" y2="12"></line>
+              <line x1="21" y1="12" x2="23" y2="12"></line>
+              <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+              <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+            </svg>
+            <svg class="moon-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M21 12a9 9 0 100-16 9 9 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"></path>
+            </svg>
+          </button>
+        </div>
+      </ul>
+      <div class="nav-right" id="navRight">
+        <div class="account-skeleton" style="display: flex; align-items: center; gap: 0.75rem; width: 100%; justify-content: flex-end;">
+          <div class="skeleton" style="width: 120px; height: 36px; border-radius: 9999px; background: linear-gradient(90deg, #f3f4f6 0%, #e5e7eb 50%, #f3f4f6 100%); background-size: 200% 100%; animation: shimmer 1.5s infinite;"></div>
+          <div class="skeleton" style="width: 40px; height: 40px; border-radius: 50%; background: linear-gradient(90deg, #f3f4f6 0%, #e5e7eb 50%, #f3f4f6 100%); background-size: 200% 100%; animation: shimmer 1.5s infinite;"></div>
+          <div class="skeleton" style="width: 40px; height: 40px; border-radius: 50%; background: linear-gradient(90deg, #f3f4f6 0%, #e5e7eb 50%, #f3f4f6 100%); background-size: 200% 100%; animation: shimmer 1.5s infinite;"></div>
+        </div>
+      </div>
+    </div>
+  </nav>
+
+  <main class="fade-enter analysis-page">
+    <!-- Added credit warning banner -->
+    <div id="creditWarningBanner" class="hidden" style="background: linear-gradient(135deg, #f59e0b 0%, #ef4444 100%); color: white; padding: 1rem; text-align: center; font-weight: 600;">
+      <div class="max-w-7xl mx-auto px-4 flex items-center justify-center gap-4">
+        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path>
+        </svg>
+        <span id="creditWarningText">Your credits are running low! Upgrade to Premium.</span>
+        <a href="pricing.html" class="bg-white text-orange-600 px-4 py-2 rounded-lg font-bold hover:bg-gray-100 transition">
+          Go to Pricing
+        </a>
+      </div>
+    </div>
+
+    <div class="analysis-hero">
+      <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <div class="text-center">
+          <h1 class="analysis-title">AI Face Analysis</h1>
+          <p class="analysis-subtitle">Advanced facial measurement and symmetry analysis powered by AI</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      
+      <!-- Redesigned How to Use section with modern card design -->
+      <div class="how-to-use-section">
+        <div class="text-center mb-8">
+          <h2 class="section-title">How It Works</h2>
+          <p class="section-subtitle">Follow these simple steps to analyze your face</p>
+        </div>
+
+        <div class="steps-grid">
+          <div class="step-card">
+            <div class="step-number">1</div>
+            <div class="step-icon">
+              <svg class="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
+              </svg>
+            </div>
+            <h3 class="step-title">Upload Photo</h3>
+            <p class="step-description">Choose a clear frontal photo of your face</p>
+          </div>
+
+          <div class="step-card">
+            <div class="step-number">2</div>
+            <div class="step-icon">
+              <svg class="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"></path>
+              </svg>
+            </div>
+            <h3 class="step-title">Select Gender</h3>
+            <p class="step-description">Choose male or female for accurate analysis</p>
+          </div>
+
+          <div class="step-card">
+            <div class="step-number">3</div>
+            <div class="step-icon">
+              <svg class="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 15l-2 5L9 9l11 4-5 2zm0 0l5 5M7.188 2.239l.777 2.897M5.136 7.965l-2.898-.777M13.95 4.05l-2.122 2.122m-5.657 5.656l-2.12 2.122"></path>
+              </svg>
+            </div>
+            <h3 class="step-title">Click Analyze</h3>
+            <p class="step-description">Press the analyze button to start AI processing</p>
+          </div>
+
+          <div class="step-card">
+            <div class="step-number">4</div>
+            <div class="step-icon">
+              <svg class="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+              </svg>
+            </div>
+            <h3 class="step-title">View Results</h3>
+            <p class="step-description">Get detailed facial measurements and scores</p>
+          </div>
+        </div>
+
+        <!-- Redesigned tips section with modern styling -->
+        <div class="tips-card">
+          <div class="tips-icon">
+            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+            </svg>
+          </div>
+          <div class="tips-content">
+            <h4 class="tips-title">Tips for Best Results</h4>
+            <ul class="tips-list">
+              <li>Use a clear, well-lit photo with your face looking directly at the camera</li>
+              <li>Make sure your entire face is visible (no sunglasses or masks)</li>
+              <li>Keep a neutral expression with eyes open for accurate measurements</li>
+              <li>All processing happens locally - your photo never leaves your device!</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+      
+      <!-- Redesigned upload section with glassmorphism effect -->
+      <div class="upload-card">
+        <div class="upload-header">
+          <div>
+            <label class="upload-label">Upload Photo</label>
+            <p class="upload-hint">JPG, PNG, or WEBP</p>
+          </div>
+          <span class="privacy-badge">
+            <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+              <path d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path>
+            </svg>
+            Local • No Upload
+          </span>
+        </div>
+        
+        <div id="drop-zone" class="drop-zone">
+          <svg class="drop-zone-icon" stroke="currentColor" fill="none" viewBox="0 0 48 48">
+            <path d="M28 8H12a4 4 0 00-4 4v20m32-12v8m0 0v8a4 4 0 00-4 4H12a4 4 0 00-4-4v-4m32-4l-3.172-3.172a4 4 0 00-5.656 0L28 28M8 32l9.172-9.172a4 4 0 015.656 0L28 28m0 0l4 4m4-24h8m-4-4v8m-12 4h.02" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+          </svg>
+          <p class="drop-zone-text">Drag and drop your photo here, or</p>
+          <input type="file" id="file-input" accept=".jpg,.jpeg,.png,.webp" class="hidden">
+          <button id="upload-btn" class="upload-button">
+            Choose File
+          </button>
+        </div>
+
+        <div class="upload-options">
+          <div class="upload-option">
+            <label class="option-label">Or load from URL</label>
+            <div class="option-input-group">
+              <input type="url" id="url-input" placeholder="https://example.com/image.jpg" class="option-input">
+              <button id="url-btn" class="option-button">
+                Load
+              </button>
+            </div>
+          </div>
+          <div class="upload-option">
+            <label class="option-label">Or use camera</label>
+            <button id="camera-btn" class="camera-button">
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0010.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"></path>
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"></path>
+              </svg>
+              Take Photo
+            </button>
+          </div>
+        </div>
+      </div>
+      
+      <div id="camera-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+        <div class="bg-white rounded-lg p-6 max-w-2xl w-full">
+          <div class="flex justify-between items-center mb-4">
+            <h3 class="text-lg font-semibold text-gray-900">Take Photo</h3>
+            <button id="close-camera" class="text-gray-500 hover:text-gray-700">
+              <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+              </svg>
+            </button>
+          </div>
+          <video id="camera-video" class="w-full rounded-lg mb-4" autoplay playsinline></video>
+          <canvas id="camera-canvas" class="hidden"></canvas>
+          <div class="flex gap-4">
+            <button id="capture-btn" class="flex-1 bg-cyan-600 text-white px-4 py-2 rounded-lg hover:bg-cyan-700 transition">
+              Capture
+            </button>
+            <button id="cancel-camera" class="flex-1 bg-gray-200 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-300 transition">
+              Cancel
+            </button>
+          </div>
+        </div>
+      </div>
+      
+      <div id="loading-state" class="hidden flex flex-col items-center justify-center py-12">
+        <div class="spinner mb-4"></div>
+        <p class="text-gray-600 font-medium">Loading AI model...</p>
+      </div>
+      
+      <!-- Redesigned preview section with modern styling -->
+      <div id="preview-section" class="hidden preview-section">
+        <div class="gender-selector">
+          <label class="gender-label">Select Gender</label>
+          <div class="gender-options">
+            <label class="gender-option">
+              <input type="radio" name="gender" value="male" class="gender-radio" checked>
+              <span class="gender-text">Male</span>
+            </label>
+            <label class="gender-option">
+              <input type="radio" name="gender" value="female" class="gender-radio">
+              <span class="gender-text">Female</span>
+            </label>
+          </div>
+        </div>
+        
+        <div class="preview-container-wrapper">
+          <div id="preview-container" class="preview-container">
+            <img id="preview-image" src="/placeholder.svg" alt="Preview" class="preview-image">
+            <canvas id="overlay-canvas" class="overlay-canvas"></canvas>
+          </div>
+        </div>
+        
+        <div class="action-buttons">
+          <button id="analyze-btn" class="analyze-button">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 15l-2 5L9 9l11 4-5 2zm0 0l5 5M7.188 2.239l.777 2.897M5.136 7.965l-2.898-.777M13.95 4.05l-2.122 2.122m-5.657 5.656l-2.12 2.122"></path>
+            </svg>
+            Analyze
+          </button>
+          <button id="reset-btn" class="reset-button">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+            </svg>
+            Reset
+          </button>
+        </div>
+      </div>
+      
+      <div id="error-message" class="hidden error-message">
+        <div class="error-icon">
+          <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+            <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 001.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd"></path>
+          </svg>
+        </div>
+        <div>
+          <p class="error-title">Error</p>
+          <p id="error-text" class="error-text"></p>
+        </div>
+      </div>
+      
+      <!-- Redesigned results section with modern card layout and circular score -->
+      <div id="metrics-section" class="hidden results-section">
+        <div class="results-header">
+          <h2 class="results-title">Analysis Results</h2>
+          <p class="results-subtitle">Detailed facial measurements and symmetry analysis</p>
+        </div>
+        
+        <!-- Added circular score display -->
+        <div id="score-display" class="score-display">
+          <div class="score-circle">
+            <svg class="score-svg" viewBox="0 0 200 200">
+              <circle class="score-bg" cx="100" cy="100" r="85" />
+              <circle id="score-progress" class="score-progress" cx="100" cy="100" r="85" />
+            </svg>
+            <div class="score-content">
+              <div id="score-value" class="score-value">0</div>
+              <div class="score-label">Overall Score</div>
+            </div>
+          </div>
+          <div class="score-info">
+            <h3 class="score-info-title">AI Beauty Analysis</h3>
+            <p class="score-info-text">Based on facial symmetry, proportions, and golden ratio measurements</p>
+            <div class="score-disclaimer">For entertainment purposes only</div>
+          </div>
+        </div>
+        
+        <div id="metrics-grid" class="metrics-grid"></div>
+        
+        <div class="disclaimer-card">
+          <svg class="disclaimer-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+          </svg>
+          <div>
+            <p class="disclaimer-title">Disclaimer</p>
+            <p class="disclaimer-text">All processing happens locally in your browser. This is not medical or aesthetic diagnosis. Results are for entertainment purposes only.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <footer class="footer">
+    <div class="footer-content">
+      <div class="footer-section">
+        <h3>LynxFace</h3>
+        <p>Advanced AI-powered facial analysis technology</p>
+      </div>
+      <div class="footer-section">
+        <h4>Quick Links</h4>
+        <ul>
+          <li><a href="index.html">Home</a></li>
+          <li><a href="analyze.html">Analyze</a></li>
+          <li><a href="pricing.html">Pricing</a></li>
+          <li><a href="contact.html">Contact</a></li>
+        </ul>
+      </div>
+      <div class="footer-section">
+        <h4>Legal</h4>
+        <ul>
+          <li><a href="privacy.html">Privacy Policy</a></li>
+          <li><a href="privacy.html">Terms of Service</a></li>
+        </ul>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <p>&copy; 2025 LynxFace. All rights reserved.</p>
+    </div>
+  </footer>
+
+  <script type="module">
+    import { initAuth, getAuthState, onAuthChange } from './lib/auth-store.js'
+    import { initHeader, updateCreditsDisplay } from './lib/header-component.js'
+    import { decrementUserCredits, saveAnalysis } from './lib/supabase.js'
+    import { canGuestAnalyze, incrementGuestAnalysis } from './lib/guest-tracker.js'
+
+    await initAuth()
+    initHeader()
+
+    let currentAuthState = getAuthState()
+
+    onAuthChange((newState) => {
+      currentAuthState = newState
+      checkCreditsAndShowWarning(newState)
+    })
+
+    function checkCreditsAndShowWarning(authState) {
+      const banner = document.getElementById('creditWarningBanner')
+      const warningText = document.getElementById('creditWarningText')
+      
+      if (!banner || !warningText) return
+      
+      const { user, userProfile } = authState
+      
+      if (user && userProfile && userProfile.plan !== 'premium' && userProfile.plan !== 'elite') {
+        if (userProfile.credits <= 0) {
+          warningText.textContent = 'You\'re out of credits! Upgrade to Premium for unlimited analysis.'
+          banner.classList.remove('hidden')
+        } else if (userProfile.credits <= 3) {
+          warningText.textContent = `Only ${userProfile.credits} credits left! Upgrade to Premium.`
+          banner.classList.remove('hidden')
+        } else {
+          banner.classList.add('hidden')
+        }
+      } else {
+        banner.classList.add('hidden')
+      }
+    }
+
+    checkCreditsAndShowWarning(currentAuthState)
+
+    function showCreditModal(title, message, confirmText, confirmAction) {
+      return new Promise((resolve) => {
+        const modal = document.getElementById('credit-modal')
+        const modalTitle = document.getElementById('modal-title')
+        const modalMessage = document.getElementById('modal-message')
+        const modalConfirm = document.getElementById('modal-confirm')
+        const modalCancel = document.getElementById('modal-cancel')
+
+        modalTitle.textContent = title
+        modalMessage.textContent = message
+        modalConfirm.textContent = confirmText
+
+        modal.classList.remove('hidden')
+
+        const handleConfirm = () => {
+          modal.classList.add('hidden')
+          cleanup()
+          resolve(true)
+          confirmAction()
+        }
+
+        const handleCancel = () => {
+          modal.classList.add('hidden')
+          cleanup()
+          resolve(false)
+        }
+
+        const cleanup = () => {
+          modalConfirm.removeEventListener('click', handleConfirm)
+          modalCancel.removeEventListener('click', handleCancel)
+        }
+
+        modalConfirm.addEventListener('click', handleConfirm)
+        modalCancel.addEventListener('click', handleCancel)
+      })
+    }
+
+    const analyzeBtn = document.getElementById('analyze-btn')
+    if (analyzeBtn) {
+      analyzeBtn.addEventListener('click', async function(e) {
+        const { user, userProfile } = currentAuthState
+        
+        if (!user) {
+          if (!canGuestAnalyze()) {
+            e.preventDefault()
+            e.stopImmediatePropagation()
+            await showCreditModal(
+              'Free Analysis Used',
+              'You have used your free analysis. Sign up to get 3 more analyses!',
+              'Sign Up Now',
+              () => { window.location.href = 'signup.html' }
+            )
+            return
+          }
+          
+          incrementGuestAnalysis()
+          console.log('[v0] Guest analysis allowed, count incremented')
+        } else {
+          if (userProfile.credits <= 0) {
+            e.preventDefault()
+            e.stopImmediatePropagation()
+            await showCreditModal(
+              'No Credits Remaining',
+              'You have no credits remaining. Upgrade to Premium for unlimited analyses!',
+              'Upgrade Now',
+              () => { window.location.href = 'pricing.html' }
+            )
+            return
+          }
+          
+          try {
+            // The plan field remains unchanged in the database
+            await decrementUserCredits(user.id)
+            
+            currentAuthState.userProfile.credits -= 1
+            
+            updateCreditsDisplay(currentAuthState.userProfile.credits, false)
+            
+            if (currentAuthState.userProfile.credits === 0) {
+              setTimeout(() => {
+                showCreditModal(
+                  'Last Credit Used',
+                  'This was your last credit! Upgrade to Premium for unlimited analyses.',
+                  'Upgrade Now',
+                  () => { window.location.href = 'pricing.html' }
+                )
+              }, 1000)
+            }
+            
+            console.log('[v0] User analysis allowed, credits decremented')
+            
+            window.analysisCompletedCallback = () => {
+              window.dispatchEvent(new CustomEvent('analysisCompleted'))
+            }
+          } catch (error) {
+            e.preventDefault()
+            e.stopImmediatePropagation()
+            alert(error.message)
+            return
+          }
+        }
+      }, true)
+    }
+  </script>
+
+  <script src="script.js"></script>
+</body>
+</html>
