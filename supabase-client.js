@@ -9,8 +9,8 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
 function getBaseUrl() {
   // Check if running on GitHub Pages
   if (window.location.hostname.includes("github.io")) {
-    // For GitHub Pages: https://entrepreneur000.github.io/lynxfree
-    return window.location.origin + "/lynxfree"
+    // For GitHub Pages: https://entrepreneur000.github.io/lynxfaceai
+    return window.location.origin + "/lynxfaceai"
   }
   // For local development or custom domain
   return window.location.origin
